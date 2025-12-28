@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>الباحث الذكي الشامل (Ollama + DDGS)</title>
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1e293b;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --success-color: #10b981;
+            --error-color: #ef4444;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #0f172a;
+                --card-bg: #1e293b;
+                --text-color: #f1f5f9;
+                --text-secondary: #94a3b8;
+                --border-color: #334155;
+            }
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        header {
+            background-color: var(--card-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo { font-size: 1.2rem; font-weight: bold; color: var(--primary-color); display: flex; align-items: center; gap: 0.5rem; }
+        
+        .status-badge { font-size: 0.85rem; padding: 0.25rem 0.75rem; border-radius: 99px; background-color: var(--border-color); color: var(--text-secondary); }
+        .status-badge.connected { background-color: rgba(16, 185, 129, 0.1); color: var(--success-color); }
+
+        main {
+            flex: 1;
+            max-width: 1000px;
+            margin: 2rem auto;
+            width: 95%;
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 768px) { main { grid-template-columns: 1fr; } }
+
+        aside {
+            background-color: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            height: fit-content;
+        }
+
+        h2 { font-size: 1rem; margin-bottom: 1rem; color: var(--text-color); border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; }
+        
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-secondary); }
+        
+        input, select {
+            width: 100%; padding: 0.5rem; border-radius: 6px;
+            border: 1px solid var(--border-color); background-color: var(--bg-color);
+            color: var(--text-color); font-size: 0.9rem;
+        }
+
+        .btn {
+            background-color: var(--primary-color); color: white; border: none;
+            padding: 0.6rem 1rem; border-radius: 6px; cursor: pointer;
+            font-weight: 600; width: 100%; margin-top: 0.5rem;
+            transition: background 0.2s;
+        }
+        .btn:hover { background-color: var(--primary-hover); }
+        .btn:disabled { background-color: var(--text-secondary); cursor: not-allowed; opacity: 0.7; }
+
+        .search-container {
+            background-color: var(--card-bg); border-radius: 12px;
+            border: 1px solid var(--border-color); padding: 2rem;
+            display: flex; flex-direction: column; gap: 1.5rem;
+        }
+
+        #results-area { margin-top: 1rem; display: flex; flex-direction: column; gap: 1rem; }
+
+        .step-card {
+            background-color: var(--bg-color); border: 1px solid var(--border-color);
+            border-radius: 8px; padding: 1rem; animation: fadeIn 0.5s ease;
+        }
+
+        .step-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--text-secondary); font-weight: bold; }
+        .step-content { font-size: 0.95rem; color: var(--text-color); white-space: pre-wrap; }
+        .final-report { border: 2px solid var(--primary-color); background-color: rgba(99, 102, 241, 0.05); }
+
+        /* Markdown Styling */
+        .markdown h1, .markdown h2, .markdown h3 { margin-top: 0.5rem; color: var(--primary-color); font-weight: bold; }
+        .markdown ul { padding-right: 1.5rem; margin-bottom: 1rem; }
+        .markdown strong { color: var(--primary-color); font-weight: bold; }
+        .markdown p { margin-bottom: 0.8rem; }
+        .markdown code { background-color: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px; font-family: monospace; }
+        .markdown blockquote { border-right: 3px solid var(--primary-color); padding-right: 10px; color: var(--text-secondary); }
+
+        .loader { width: 16px; height: 16px; border: 2px solid #fff; border-bottom-color: transparent; border-radius: 50%; display: inline-block; animation: rotation 1s linear infinite; }
+        @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .connection-status { display: flex; gap: 0.5rem; align-items: center; font-size: 0.8rem; margin-top: 0.2rem; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background-color: #94a3b8; transition: background-color 0.3s; }
+        .dot.active { background-color: var(--success-color); }
+        
+        .error-box {
+            background-color: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--error-color);
+            padding: 1rem;
+            border-radius: 6px;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: var(--error-color);
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        الباحث الشامل (DDGS + Ollama)
+    </div>
+    <div class="status-badge" id="overall-status">جاهز</div>
+</header>
+
+<main>
+    <!-- Sidebar Settings -->
+    <aside>
+        <h2>إعدادات السيرفرات</h2>
+        
+        <div class="form-group">
+            <label>سيرفر البحث (Python)</label>
+            <input type="text" id="py-url" value="http://localhost:5000">
+            <div class="connection-status">
+                <div class="dot" id="py-dot"></div> <span id="py-text">غير متصل</span>
+            </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 1.5rem;">
+            <label>سيرفر الذكاء (Ollama)</label>
+            <input type="text" id="ollama-url" value="http://localhost:11434">
+            <div class="connection-status">
+                <div class="dot" id="ollama-dot"></div> <span id="ollama-text">غير متصل</span>
+            </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 1.5rem;">
+            <label>النموذج (اختر من القائمة)</label>
+            <select id="model-select">
+                <option value="" disabled selected>جاري جلب النماذج...</option>
+            </select>
+            <small style="color:var(--text-secondary); display:block; margin-top:4px;">يجب اختيار نموذج موجود بالفعل.</small>
+        </div>
+
+        <button class="btn" id="check-conn-btn">فحص الاتصال وتحديث النماذج</button>
+    </aside>
+
+    <!-- Main Search Area -->
+    <div class="search-container">
+        <input type="text" id="search-input" placeholder="اكتب موضوعاً للبحث في كامل الإنترنت..." style="width:100%; padding:1rem; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-color); color:var(--text-color); font-size:1rem;">
+        <button class="btn" id="search-btn" disabled>بدء البحث العميق</button>
+        
+        <div id="results-area">
+            <div style="text-align: center; color: var(--text-secondary); margin-top: 2rem;" id="placeholder">
+                تأكد من تشغيل ملف server.py و Ollama ثم اضغط "فحص الاتصال".
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+    // State
+    let isPyConnected = false;
+    let isOllamaConnected = false;
+
+    const els = {
+        pyUrl: document.getElementById('py-url'),
+        ollamaUrl: document.getElementById('ollama-url'),
+        pyDot: document.getElementById('py-dot'),
+        ollamaDot: document.getElementById('ollama-dot'),
+        pyText: document.getElementById('py-text'),
+        ollamaText: document.getElementById('ollama-text'),
+        checkBtn: document.getElementById('check-conn-btn'),
+        searchBtn: document.getElementById('search-btn'),
+        searchInput: document.getElementById('search-input'),
+        results: document.getElementById('results-area'),
+        placeholder: document.getElementById('placeholder'),
+        modelSelect: document.getElementById('model-select')
+    };
+
+    // 1. Check Connections
+    async function checkConnections() {
+        els.checkBtn.disabled = true;
+        els.checkBtn.textContent = 'جاري الفحص...';
+
+        // Check Python Server
+        try {
+            const res = await fetch(`${els.pyUrl.value}/`);
+            isPyConnected = res.ok;
+        } catch { isPyConnected = false; }
+        updateStatus('py', isPyConnected);
+
+        // Check Ollama & Load Models
+        try {
+            const res = await fetch(`${els.ollamaUrl.value}/api/tags`);
+            if(res.ok) {
+                isOllamaConnected = true;
+                const data = await res.json();
+                
+                // Clear select and populate with REAL models
+                els.modelSelect.innerHTML = '';
+                
+                if(data.models && data.models.length > 0) {
+                    data.models.forEach((m, index) => {
+                        const opt = document.createElement('option');
+                        opt.value = m.name;
+                        opt.textContent = m.name;
+                        els.modelSelect.appendChild(opt);
+                        
+                        // Auto-select the first model found
+                        if(index === 0) {
+                            opt.selected = true;
+                        }
+                    });
+                } else {
+                    const opt = document.createElement('option');
+                    opt.text = "لا توجد نماذج مثبتة!";
+                    els.modelSelect.add(opt);
+                }
+            } else {
+                isOllamaConnected = false;
+            }
+        } catch { isOllamaConnected = false; }
+        updateStatus('ollama', isOllamaConnected);
+
+        els.checkBtn.disabled = false;
+        els.checkBtn.textContent = 'فحص الاتصال وتحديث النماذج';
+        
+        // Enable button only if both are connected AND a model is selected
+        const modelSelected = els.modelSelect.value !== "";
+        els.searchBtn.disabled = !(isPyConnected && isOllamaConnected && modelSelected);
+    }
+
+    function updateStatus(type, connected) {
+        const dot = type === 'py' ? els.pyDot : els.ollamaDot;
+        const text = type === 'py' ? els.pyText : els.ollamaText;
+        
+        if (connected) {
+            dot.classList.add('active');
+            text.textContent = 'متصل';
+            text.style.color = 'var(--success-color)';
+        } else {
+            dot.classList.remove('active');
+            text.textContent = 'غير متصل';
+            text.style.color = 'var(--text-secondary)';
+        }
+    }
+
+    // 2. Search Function (calls Python)
+    async function performSearch(query) {
+        addStep('step-search', '🔍 جاري البحث في الإنترنت (DDGS)...');
+        try {
+            const res = await fetch(`${els.pyUrl.value}/search?q=${encodeURIComponent(query)}`);
+            if (!res.ok) throw new Error('فشل الاتصال بسيرفر البحث');
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            
+            // Limit context length
+            let context = data.context;
+            const maxContextLength = 6000; 
+            if (context.length > maxContextLength) {
+                context = context.substring(0, maxContextLength) + "... [تم اقتصاص النص]";
+                console.warn("Context truncated");
+            }
+
+            const sourceCount = (context.match(/مصدر/g) || []).length;
+            updateStep('step-search', `✅ تم جلب المعلومات من ${sourceCount} مصادر.`);
+            return context;
+        } catch (e) {
+            updateStep('step-search', `❌ خطأ: ${e.message}`);
+            throw e;
+        }
+    }
+
+    // 3. Generate Function
+    async function generateAI(context, query) {
+        const stepId = 'step-ai';
+        const modelName = els.modelSelect.value;
+        
+        if(!modelName) {
+            updateStep(stepId, `<div class="error-box">الرجاء اختيار نموذج من القائمة الجانبية.</div>`);
+            return;
+        }
+
+        addStep(stepId, `🤖 جاري التحليل باستخدام: <b>${modelName}</b>...`, true);
+        
+        const contentDiv = document.getElementById(`content-${stepId}`);
+        
+        const prompt = `أنت باحث ذكي. استخدم المعلومات أدناه للإجابة باللغة العربية.\n\nالسياق:\n${context}\n\nالسؤال: ${query}\n\nالإجابة:`;
+
+        try {
+            console.log(`Generating with model: ${modelName}`);
+
+            const response = await fetch(`${els.ollamaUrl.value}/api/generate`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: modelName, // Use the exact name from API
+                    prompt: prompt,
+                    stream: true
+                })
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`خطأ من Ollama (${response.status}): ${errText}`);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullText = "";
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                buffer += decoder.decode(value, {stream: true});
+                
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const json = JSON.parse(line);
+                        if (json.response) {
+                            fullText += json.response;
+                            contentDiv.innerHTML = parseMarkdown(fullText);
+                            contentDiv.scrollIntoView({ behavior: "smooth", block: "end" });
+                        }
+                    } catch (e) { /* ignore json parse errors */ }
+                }
+            }
+
+            if (buffer.trim()) {
+                 try {
+                    const json = JSON.parse(buffer);
+                    if (json.response) {
+                        fullText += json.response;
+                        contentDiv.innerHTML = parseMarkdown(fullText);
+                    }
+                 } catch(e) {}
+            }
+
+        } catch (e) {
+            updateStep(stepId, `
+                <div class="error-box">
+                    <strong>فشل الذكاء الاصطناعي!</strong><br>
+                    ${e.message}<br><br>
+                    <small>تأكد من تحميل النموذج عبر الأمر: ollama pull ${modelName}</small>
+                </div>
+            `);
+            throw e;
+        }
+    }
+
+    // Main Workflow
+    els.searchBtn.addEventListener('click', async () => {
+        const query = els.searchInput.value.trim();
+        if(!query) return;
+
+        els.results.innerHTML = '';
+        els.placeholder.style.display = 'none';
+        els.searchBtn.disabled = true;
+
+        try {
+            const context = await performSearch(query);
+            await generateAI(context, query);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            els.searchBtn.disabled = false;
+        }
+    });
+
+    els.checkBtn.addEventListener('click', checkConnections);
+
+    function addStep(id, text, isFinal = false) {
+        const div = document.createElement('div');
+        div.className = `step-card ${isFinal ? 'final-report' : ''}`;
+        div.id = id;
+        div.innerHTML = `
+            <div class="step-header"><span>${text}</span><span>${new Date().toLocaleTimeString('ar-EG')}</span></div>
+            <div class="step-content markdown" id="content-${id}"></div>
+        `;
+        els.results.appendChild(div);
+        div.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    function updateStep(id, htmlContent) {
+        const el = document.getElementById(`content-${id}`);
+        if(el) el.innerHTML = htmlContent;
+    }
+
+    function parseMarkdown(text) {
+        let html = text
+            .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+            .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+            .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+            .replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>')
+            .replace(/^- (.*$)/gim, '<ul><li>$1</li></ul>')
+            .replace(/\n/gim, '<br>');
+        html = html.replace(/<\/ul><br><ul>/gim, '');
+        return html;
+    }
+
+    // Auto check on load
+    setTimeout(checkConnections, 1000);
+</script>
+
+</body>
+</html>
